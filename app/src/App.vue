@@ -6,18 +6,9 @@
     <div v-else>
       <h1>Capture Video</h1>
       <button @click="toggleVideo" class="startBtn">{{ started ? 'Stop' : 'Start' }}</button>
-      Select Device:
-      <select v-if="videoDevices && videoDevices.length" name="cameraOptions" id="cameraOptions"
-        @change="onDeviceChanged($event.target.value)">
-        <option v-for="device in videoDevices" :value="device.deviceId" :key="device.deviceId">{{ device.label }}
-        </option>
-      </select>
+      <button @click="onFlipCamera">Flip Camera</button>
       <br>
       <video ref="videoElm" autoplay="true" src=""></video>
-      <ul v-if="selectedVideoDevice">
-        <li>Device name: {{ selectedVideoDevice.label }}</li>
-        <li>Device id: {{ selectedVideoDevice.deviceId }}</li>
-      </ul>
     </div>
   </main>
 </template>
@@ -27,25 +18,17 @@ import { onMounted, onUnmounted, ref } from 'vue';
 
 const videoElm = ref(null);
 const videoStream = ref(null);
-const videoDevices = ref(null);
-const selectedVideoDevice = ref(null)
 const permissionDenied = ref(false);
 const started = ref(false);
+const frontCamera = ref(true);
 
 const toggleVideo = async () => {
   try {
     if (started.value) {
-      // stop recording
+      // stop old recording
       videoStream.value?.getTracks().forEach(track => track.stop());
     } else {
-      console.log("here", selectedVideoDevice.value.deviceId);
-      videoStream.value = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        deviceId: {
-          exact: selectedVideoDevice.value.deviceId
-        }
-      });
-      videoElm.value.srcObject = videoStream.value;
+      await startRecording();
     }
     started.value = !started.value;
   } catch (err) {
@@ -53,28 +36,28 @@ const toggleVideo = async () => {
   }
 }
 
-const onDeviceChanged = async (deviceId) => {
+const onFlipCamera = async () => {
   try {
-    selectedVideoDevice.value = videoDevices.value.find(device => device.deviceId === deviceId);
+    frontCamera.value = !frontCamera.value;
 
     if (!started.value) return;
 
-    // stop recording
+    // stop old recording
     videoStream.value?.getTracks().forEach(track => track.stop());
+    await startRecording();
 
-    console.log(selectedVideoDevice.value.deviceId);
-    videoStream.value = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment"
-      },
-      deviceId: {
-        exact: selectedVideoDevice.value.deviceId
-      }
-    });
-    videoElm.value.srcObject = videoStream.value;
   } catch (err) {
     console.error(err);
   }
+}
+
+const startRecording = async () => {
+  videoStream.value = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: frontCamera.value ? "user" : "environment"
+    }
+  });
+  videoElm.value.srcObject = videoStream.value;
 }
 
 onMounted(async () => {
@@ -90,10 +73,6 @@ onMounted(async () => {
     permissionDenied.value = true;
     console.error(err);
   }
-
-  videoDevices.value = (await navigator.mediaDevices.enumerateDevices())
-    ?.filter(dev => dev.kind === "videoinput");
-  selectedVideoDevice.value = videoDevices.value[0];
 });
 
 onUnmounted(() => {
@@ -144,13 +123,10 @@ video {
   background-color: #333;
 }
 
-#cameraOptions {
-  margin-bottom: 0.4rem;
-}
-
 .startBtn {
   padding: 0.4rem;
   font-size: 1rem;
   margin-bottom: 0.4rem;
+  margin-right: 0.4rem;
 }
 </style>
