@@ -11,7 +11,8 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
-    "html5-qrcode": "^2.3.8",
+    "@zxing/browser": "^0.1.4",
+    "@zxing/library": "^0.20.0",
     "vue": "^3.3.11",
     "vue-router": "^4.2.5"
   },

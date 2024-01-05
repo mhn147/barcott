@@ -4,8 +4,6 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 
-import "html5-qrcode";
-
 const app = createApp(App)
 
 app.use(router)
