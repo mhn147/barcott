@@ -5,14 +5,14 @@
     </div>
     <div v-else id="video">
       <video />
-      <canvas class="barcodeDetection" />
+      <canvas class="drawingBuffer" />
     </div>
   </main>
   <footer>
     <div class="action-buttons-ctr">
       <button v-if="started" @click="onStopClicked" class="action_btn">Stop</button>
       <button v-else @click="onStartClicked" class="action_btn">Scan</button>
-      <button @click="onFlipCamera" class="action_btn flip_btn"><img src="/camera_flip.png" /></button>
+      <button v-if="started" @click="onFlipCamera" class="action_btn flip_btn"><img src="/camera_flip.png" /></button>
     </div>
   </footer>
 </template>
@@ -24,7 +24,6 @@ import { onMounted, onUnmounted, ref } from 'vue';
 const cameraAccessDenied = ref(false);
 const mainElement = ref(null);
 const started = ref(false);
-const rearCamera = ref(true);
 let scanner;
 let scannerConfig;
 
@@ -36,7 +35,7 @@ onMounted(() => {
       constraints: {
         width: mainElement.value.widthOffset,
         height: mainElement.value.heightOffset,
-        facingMode: rearCamera.value ? "environment" : "user",
+        facingMode: "environment",
         aspectRatio: { min: 1, max: 2 },
       },
     }
@@ -46,20 +45,23 @@ onMounted(() => {
 const onStartClicked = async () => {
   try {
     const scannerInitialized = Boolean(scanner);
-    if (scannerInitialized) {
-      scanner.start();
-    } else {
+    if (!scannerInitialized) {
       const access = await askForCameraAccess();
       if (!access) {
         console.warn("User denied camera access");
         cameraAccessDenied.value = true;
         return;
       }
-      scanner = new QuaggaScanner({
-        inputStream: scannerConfig.input
-      }, onDetected, onProcessed);
     }
-    started.value = !started.value;
+
+    if (scannerInitialized) {
+      scanner.stop();
+    }
+    scanner = new QuaggaScanner({
+      inputStream: scannerConfig.input
+    }, onDetected, onProcessed);
+
+    started.value = true;
   } catch (error) {
     console.error(error);
   }
@@ -68,7 +70,7 @@ const onStartClicked = async () => {
 const onStopClicked = async () => {
   try {
     scanner.stop();
-    started.value = !started.value;
+    started.value = false;
   } catch (err) {
     console.error(err);
   }
@@ -76,12 +78,16 @@ const onStopClicked = async () => {
 
 const onFlipCamera = async () => {
   try {
-    rearCamera.value = !rearCamera.value;
-    if (!started.value) return;
+    scannerConfig.input.constraints.facingMode = scannerConfig.input.constraints.facingMode === "environment"
+       ? "user"
+       : "environment"
 
     // stop old recording
     scanner.stop();
-    scanner.start();
+    console.log(scannerConfig.input)
+    scanner = new QuaggaScanner({
+      inputStream: scannerConfig.input
+    }, onDetected, onProcessed);
   } catch (err) {
     console.error(err);
   }
@@ -119,6 +125,7 @@ footer {
   padding: 0.2rem 0.4rem;
   border-top: 1px solid #aaa;
 }
+
 .action-buttons-ctr {
   height: 100%;
   display: flex;
@@ -157,12 +164,14 @@ main {
   width: 100%;
   position: relative;
 }
+
 video {
   width: 100%;
   height: 100%;
   background-color: #333;
 }
-.barcodeDetection {
+
+.drawingBuffer {
   position: absolute;
   top: 0;
   left: 0;
