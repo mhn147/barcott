@@ -8,27 +8,31 @@
       <button @click="toggleVideo" class="startBtn">{{ started ? 'Stop' : 'Start' }}</button>
       <button @click="onFlipCamera">Flip Camera</button>
       <br>
-      <video ref="videoElm" autoplay="true" src=""></video>
+      <p>Detected: {{ detected }}</p>
+      <div id="interactive" class="viewport">
+        <video />
+        <canvas class="drawingBuffer" />
+      </div>
     </div>
   </main>
 </template>
 
 <script setup>
+import Quagga from "@ericblade/quagga2";
 import { onMounted, onUnmounted, ref } from 'vue';
 
-const videoElm = ref(null);
-const videoStream = ref(null);
 const permissionDenied = ref(false);
 const started = ref(false);
 const frontCamera = ref(true);
 
 const toggleVideo = async () => {
   try {
+
+
     if (started.value) {
-      // stop old recording
-      videoStream.value?.getTracks().forEach(track => track.stop());
+      stopRecording();
     } else {
-      await startRecording();
+      startRecording();
     }
     started.value = !started.value;
   } catch (err) {
@@ -39,26 +43,76 @@ const toggleVideo = async () => {
 const onFlipCamera = async () => {
   try {
     frontCamera.value = !frontCamera.value;
-
     if (!started.value) return;
 
     // stop old recording
-    videoStream.value?.getTracks().forEach(track => track.stop());
-    await startRecording();
-
+    stopRecording();
+    startRecording();
   } catch (err) {
     console.error(err);
   }
 }
 
-const startRecording = async () => {
-  videoStream.value = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: frontCamera.value ? "user" : "environment"
+const startRecording = () => {
+  Quagga.init({
+    inputStream: {
+      type: 'LiveStream',
+      target: document.querySelector("#scannerContainer"),
+      constraints: {
+        width: { min: "640" },
+        height: { min: "480" },
+        facingMode: frontCamera.value ? "user" : "environment",
+        aspectRatio: { min: 1, max: 2 },
+      },
+    },
+    locator: {
+      patchSize: 'medium',
+      halfSample: true,
+    },
+    numOfWorkers: 2,
+    frequency: 10,
+    decoder: {
+      readers: [
+        "ean_reader",
+        "ean_8_reader",
+        {
+          format: "ean_reader",
+          config: {
+            supplements: [
+              'ean_5_reader', 'ean_2_reader'
+            ]
+          }
+        },
+        "upc_reader",
+        "upc_e_reader",
+        "code_128_reader",
+      ],
+    },
+    locate: true,
+  }, (err) => {
+    if (err) {
+      console.error(err);
+      return;
     }
+    Quagga.start();
+    Quagga.onDetected(onDetected);
+    Quagga.onProcessed(onProcessed);
   });
-  videoElm.value.srcObject = videoStream.value;
 }
+
+const stopRecording = () => {
+  Quagga.stop();
+}
+
+const detected = ref(0);
+const onDetected = (result) => {
+  detected.value = result;
+  console.log("Detected: ", result);
+};
+
+const onProcessed = (result) => {
+  console.log("Processed: ", result);
+};
 
 onMounted(async () => {
   if (!navigator.mediaDevices.getUserMedia) {
@@ -67,8 +121,8 @@ onMounted(async () => {
   }
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    stream.getTracks().forEach(track => track.stop());
+    // const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    // stream.getTracks().forEach(track => track.stop());
   } catch (err) {
     permissionDenied.value = true;
     console.error(err);
@@ -77,7 +131,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   // stop recording
-  videoStream.value?.getTracks().forEach(track => track.stop());
+  //videoStream.value?.getTracks().forEach(track => track.stop());
+  if (this.onDetected) Quagga.offDetected(this.onDetected);
+  if (this.onProcessed) Quagga.offProcessed(this.offProcessed);
+  stopRecording();
 })
 
 </script>
