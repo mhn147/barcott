@@ -1,43 +1,47 @@
 <template>
-  <main>
+  <main ref="mainElement">
     <div v-if="cameraAccessDenied" class="premissionDenied">
       <p>⚠️ Camera permission denied. Please allow it in order to use this app.</p>
     </div>
-    <div v-else>
-      <h1>Capture Video</h1>
-      <button v-if="started" @click="onStopClicked" class="videoBtn">Stop</button>
-      <button v-else @click="onStartClicked" class="videoBtn">Start</button>
-      <button @click="onFlipCamera">Flip Camera</button>
-      <br>
-      <div id="interactive" class="viewport">
-        <video />
-        <canvas class="drawingBuffer" />
-      </div>
+    <div v-else id="video">
+      <video />
+      <canvas class="barcodeDetection" />
     </div>
   </main>
+  <footer>
+    <div class="action-buttons-ctr">
+      <button v-if="started" @click="onStopClicked" class="action_btn">Stop</button>
+      <button v-else @click="onStartClicked" class="action_btn">Scan</button>
+      <button @click="onFlipCamera" class="action_btn flip_btn"><img src="/camera_flip.png" /></button>
+    </div>
+  </footer>
 </template>
 
 <script setup>
 import { QuaggaScanner } from "./scanner.js";
-import { onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 
 const cameraAccessDenied = ref(false);
+const mainElement = ref(null);
 const started = ref(false);
 const rearCamera = ref(true);
 let scanner;
-const scannerConfig = {
-  input: {
-    type: 'LiveStream',
-    target: document.querySelector("#scannerContainer"),
-    constraints: {
-      width: { min: "640" },
-      height: { min: "480" },
-      facingMode: rearCamera.value ? "environment" : "user",
-      aspectRatio: { min: 1, max: 2 },
-    },
-  }
-}
+let scannerConfig;
 
+onMounted(() => {
+  scannerConfig = {
+    input: {
+      type: 'LiveStream',
+      target: document.querySelector("#video"),
+      constraints: {
+        width: mainElement.value.widthOffset,
+        height: mainElement.value.heightOffset,
+        facingMode: rearCamera.value ? "environment" : "user",
+        aspectRatio: { min: 1, max: 2 },
+      },
+    }
+  }
+});
 
 const onStartClicked = async () => {
   try {
@@ -108,23 +112,62 @@ onUnmounted(() => {
 
 </script>
 
-<style>
-body {
-  background-color: #eee;
-}
-
-* {
-  font-family: arial, sans-serif;
-}
-</style>
-
 <style scoped>
+footer {
+  height: 6vh;
+  width: 100vw;
+  padding: 0.2rem 0.4rem;
+  border-top: 1px solid #aaa;
+}
+.action-buttons-ctr {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.action_btn {
+  height: 95%;
+  padding: 0.4rem;
+  font-size: 1rem;
+}
+
+.flip_btn {
+  margin-left: 0.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flip_btn img {
+  width: 24px;
+  height: 24px;
+}
+
 main {
-  width: 90%;
-  margin: 0 auto;
-  padding: 1rem;
-  background-color: #cccccc;
-  border-radius: 8px;
+  padding: 0.4rem;
+  width: 100vw;
+  height: 94vh;
+  display: flex;
+  align-items: center;
+}
+
+#video {
+  height: 70%;
+  width: 100%;
+  position: relative;
+}
+video {
+  width: 100%;
+  height: 100%;
+  background-color: #333;
+}
+.barcodeDetection {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .premissionDenied {
@@ -135,24 +178,5 @@ main {
 
 .premissionDenied p {
   margin: 0;
-}
-
-h1 {
-  margin-top: 0;
-  margin-bottom: 0.8rem;
-}
-
-video {
-  width: 400px;
-  max-width: 100%;
-  height: 375px;
-  background-color: #333;
-}
-
-.videoBtn {
-  padding: 0.4rem;
-  font-size: 1rem;
-  margin-bottom: 0.4rem;
-  margin-right: 0.4rem;
 }
 </style>
