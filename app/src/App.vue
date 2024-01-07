@@ -1,14 +1,14 @@
 <template>
   <main>
-    <div v-if="permissionDenied" class="premissionDenied">
+    <div v-if="cameraAccessDenied" class="premissionDenied">
       <p>⚠️ Camera permission denied. Please allow it in order to use this app.</p>
     </div>
     <div v-else>
       <h1>Capture Video</h1>
-      <button @click="toggleVideo" class="startBtn">{{ started ? 'Stop' : 'Start' }}</button>
+      <button v-if="started" @click="onStopClicked" class="videoBtn">Stop</button>
+      <button v-else @click="onStartClicked" class="videoBtn">Start</button>
       <button @click="onFlipCamera">Flip Camera</button>
       <br>
-      <p>Detected: {{ detected }}</p>
       <div id="interactive" class="viewport">
         <video />
         <canvas class="drawingBuffer" />
@@ -18,22 +18,52 @@
 </template>
 
 <script setup>
-import Quagga from "@ericblade/quagga2";
-import { onMounted, onUnmounted, ref } from 'vue';
+import { QuaggaScanner } from "./scanner.js";
+import { onUnmounted, ref } from 'vue';
 
-const permissionDenied = ref(false);
+const cameraAccessDenied = ref(false);
 const started = ref(false);
-const frontCamera = ref(true);
+const rearCamera = ref(true);
+let scanner;
+const scannerConfig = {
+  input: {
+    type: 'LiveStream',
+    target: document.querySelector("#scannerContainer"),
+    constraints: {
+      width: { min: "640" },
+      height: { min: "480" },
+      facingMode: rearCamera.value ? "environment" : "user",
+      aspectRatio: { min: 1, max: 2 },
+    },
+  }
+}
 
-const toggleVideo = async () => {
+
+const onStartClicked = async () => {
   try {
-
-
-    if (started.value) {
-      stopRecording();
+    const scannerInitialized = Boolean(scanner);
+    if (scannerInitialized) {
+      scanner.start();
     } else {
-      startRecording();
+      const access = await askForCameraAccess();
+      if (!access) {
+        console.warn("User denied camera access");
+        cameraAccessDenied.value = true;
+        return;
+      }
+      scanner = new QuaggaScanner({
+        inputStream: scannerConfig.input
+      }, onDetected, onProcessed);
     }
+    started.value = !started.value;
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+const onStopClicked = async () => {
+  try {
+    scanner.stop();
     started.value = !started.value;
   } catch (err) {
     console.error(err);
@@ -42,71 +72,29 @@ const toggleVideo = async () => {
 
 const onFlipCamera = async () => {
   try {
-    frontCamera.value = !frontCamera.value;
+    rearCamera.value = !rearCamera.value;
     if (!started.value) return;
 
     // stop old recording
-    stopRecording();
-    startRecording();
+    scanner.stop();
+    scanner.start();
   } catch (err) {
     console.error(err);
   }
 }
 
-const startRecording = () => {
-  Quagga.init({
-    inputStream: {
-      type: 'LiveStream',
-      target: document.querySelector("#scannerContainer"),
-      constraints: {
-        width: { min: "640" },
-        height: { min: "480" },
-        facingMode: frontCamera.value ? "user" : "environment",
-        aspectRatio: { min: 1, max: 2 },
-      },
-    },
-    locator: {
-      patchSize: 'medium',
-      halfSample: true,
-    },
-    numOfWorkers: 2,
-    frequency: 10,
-    decoder: {
-      readers: [
-        "ean_reader",
-        "ean_8_reader",
-        {
-          format: "ean_reader",
-          config: {
-            supplements: [
-              'ean_5_reader', 'ean_2_reader'
-            ]
-          }
-        },
-        "upc_reader",
-        "upc_e_reader",
-        "code_128_reader",
-      ],
-    },
-    locate: true,
-  }, (err) => {
-    if (err) {
-      console.error(err);
-      return;
-    }
-    Quagga.start();
-    Quagga.onDetected(onDetected);
-    Quagga.onProcessed(onProcessed);
-  });
+const askForCameraAccess = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    stream.getTracks().forEach(track => track.stop());
+    return true;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
 }
 
-const stopRecording = () => {
-  Quagga.stop();
-}
-
-const detected = ref(0);
 const onDetected = (result) => {
-  detected.value = result;
   console.log("Detected: ", result);
 };
 
@@ -114,27 +102,8 @@ const onProcessed = (result) => {
   console.log("Processed: ", result);
 };
 
-onMounted(async () => {
-  if (!navigator.mediaDevices.getUserMedia) {
-    permissionDenied.value = true;
-    return;
-  }
-
-  try {
-    // const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    // stream.getTracks().forEach(track => track.stop());
-  } catch (err) {
-    permissionDenied.value = true;
-    console.error(err);
-  }
-});
-
 onUnmounted(() => {
-  // stop recording
-  //videoStream.value?.getTracks().forEach(track => track.stop());
-  if (this.onDetected) Quagga.offDetected(this.onDetected);
-  if (this.onProcessed) Quagga.offProcessed(this.offProcessed);
-  stopRecording();
+  scanner?.stop();
 })
 
 </script>
@@ -180,7 +149,7 @@ video {
   background-color: #333;
 }
 
-.startBtn {
+.videoBtn {
   padding: 0.4rem;
   font-size: 1rem;
   margin-bottom: 0.4rem;
