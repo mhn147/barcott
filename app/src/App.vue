@@ -4,26 +4,40 @@
       <p>⚠️ Camera permission denied. Please allow it in order to use this app.</p>
     </div>
     <div v-else id="video">
-      <video />
-      <canvas class="drawingBuffer" />
+      <div v-if="detected">
+         <ul>
+          <li>Code: {{ detected.codeResult.code }}</li>
+          <li>Format: {{ detected.codeResult.format }}</li>
+         </ul>
+      </div>
+      <template v-else>
+        <audio id="barcodeAudio" ref="barcodeAudioElement" src="/barcode-scan.mp3" />
+        <video @play="resizeCanvas" ref="videoElement" />
+        <canvas class="drawingBuffer" ref="canvasElement" />
+      </template>
     </div>
   </main>
   <footer>
     <div class="action-buttons-ctr">
-      <button v-if="started" @click="onStopClicked" class="action_btn">Stop</button>
-      <button v-else @click="onStartClicked" class="action_btn">Scan</button>
+      <button v-if="started" @click="stopScan" class="action_btn">Stop</button>
+      <button v-else @click="startScan" class="action_btn">Scan</button>
       <button v-if="started" @click="onFlipCamera" class="action_btn flip_btn"><img src="/camera_flip.png" /></button>
     </div>
   </footer>
 </template>
 
 <script setup>
+import Quagga from "@ericblade/quagga2";
 import { QuaggaScanner } from "./scanner.js";
 import { onMounted, onUnmounted, ref } from 'vue';
 
 const cameraAccessDenied = ref(false);
 const mainElement = ref(null);
+const barcodeAudioElement = ref(null);
+const videoElement = ref(null);
+const canvasElement = ref(null);
 const started = ref(false);
+const detected = ref(null);
 let scanner;
 let scannerConfig;
 
@@ -42,7 +56,7 @@ onMounted(() => {
   }
 });
 
-const onStartClicked = async () => {
+const startScan = async () => {
   try {
     const scannerInitialized = Boolean(scanner);
     if (!scannerInitialized) {
@@ -57,6 +71,9 @@ const onStartClicked = async () => {
     if (scannerInitialized) {
       scanner.stop();
     }
+
+    detected.value = null;
+
     scanner = new QuaggaScanner({
       inputStream: scannerConfig.input
     }, onDetected, onProcessed);
@@ -67,7 +84,7 @@ const onStartClicked = async () => {
   }
 }
 
-const onStopClicked = async () => {
+const stopScan = async () => {
   try {
     scanner.stop();
     started.value = false;
@@ -79,18 +96,23 @@ const onStopClicked = async () => {
 const onFlipCamera = async () => {
   try {
     scannerConfig.input.constraints.facingMode = scannerConfig.input.constraints.facingMode === "environment"
-       ? "user"
-       : "environment"
+      ? "user"
+      : "environment"
 
     // stop old recording
     scanner.stop();
     console.log(scannerConfig.input)
     scanner = new QuaggaScanner({
       inputStream: scannerConfig.input
-    }, onDetected, onProcessed);
+    }, onProcessed, onDetected);
   } catch (err) {
     console.error(err);
   }
+}
+
+const resizeCanvas = () => {
+  canvasElement.value.widthOffset = videoElement.value.widthOffset;
+  canvasElement.value.heightOffset = videoElement.value.heightOffset;
 }
 
 const askForCameraAccess = async () => {
@@ -105,11 +127,52 @@ const askForCameraAccess = async () => {
 }
 
 const onDetected = (result) => {
-  console.log("Detected: ", result);
+  barcodeAudioElement.value.play();
+  stopScan();
+  detected.value = result
 };
 
 const onProcessed = (result) => {
-  console.log("Processed: ", result);
+  if (!result) return;
+
+  console.log(result);
+
+  let drawingCtx = Quagga.canvas.ctx.overlay;
+  let drawingCanvas = Quagga.canvas.dom.overlay;
+
+  if (result.boxes) {
+    drawingCtx.clearRect(
+      0,
+      0,
+      parseInt(drawingCanvas.getAttribute('width')),
+      parseInt(drawingCanvas.getAttribute('height'))
+    );
+    result.boxes
+      .filter(function (box) {
+        return box !== result.box;
+      })
+      .forEach(function (box) {
+        Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, {
+          color: 'green',
+          lineWidth: 2,
+        });
+      });
+  }
+  if (result.box) {
+    Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, {
+      color: '#00F',
+      lineWidth: 2,
+    });
+  }
+
+  if (result.codeResult && result.codeResult.code) {
+    Quagga.ImageDebug.drawPath(
+      result.line,
+      { x: 'x', y: 'y' },
+      drawingCtx,
+      { color: 'red', lineWidth: 3 }
+    );
+  }
 };
 
 onUnmounted(() => {

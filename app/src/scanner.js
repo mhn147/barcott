@@ -11,6 +11,8 @@ export class QuaggaScanner {
         frequency: 10,
         decoder: {
             readers: [
+                "upc_reader",
+                "upc_e_reader",
                 "ean_reader",
                 "ean_8_reader",
                 {
@@ -21,8 +23,6 @@ export class QuaggaScanner {
                         ]
                     }
                 },
-                "upc_reader",
-                "upc_e_reader",
                 "code_128_reader",
             ],
         },
@@ -37,16 +37,15 @@ export class QuaggaScanner {
             throw Error("onDetected missing");
         }
 
-        this.#initConfig(this.#config);
+        this.#initConfig(config);
 
         this.onDetected = onDetected;
         if (onProcessed) this.onProcessed = onProcessed;
-
-        Quagga.init(config);
+        this.init(this.#config);
     }
 
     #initConfig(config) {
-        this.#config.inputStream = config.inputSteam;
+        this.#config.inputStream = config.inputStream;
         this.#config.locator = config.locator ?? this.#config.locator;
         this.#config.numOfWorkers = config.numOfWorkers ?? this.#config.numOfWorkers;
         this.#config.frequency = config.frequency ?? this.#config.frequency;
@@ -54,16 +53,14 @@ export class QuaggaScanner {
     }
 
     init() {
-        Quagga.init(this.#config, this.#initCallback);
-    }
-
-    #initCallback(error) {
-        if (error) {
-            throw Error(error);
-        }
-        Quagga.start();
-        Quagga.onDetected(this.onDetected);
-        Quagga.onProcessed(this.onProcessed);
+        Quagga.init(this.#config, (error) => {
+            if (error) {
+                throw Error(error);
+            }
+            Quagga.start();
+            Quagga.onDetected(this.onDetected);
+            Quagga.onProcessed(this.onProcessed);
+        });
     }
 
     start() {
